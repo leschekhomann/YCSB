@@ -103,7 +103,7 @@ public class PostgreNoSQLDBClient extends DB {
   }
 
   @Override
-  public Status read(String tableName, String key, Set<String> fields, HashMap<String, ByteIterator> result) {
+  public Status read(String tableName, String key, Set<String> fields, Map<String, ByteIterator> result) {
     try{
       PreparedStatement readStatement = connection.prepareStatement(createReadStatement(tableName, fields));
       readStatement.setString(1, key);
@@ -160,7 +160,7 @@ public class PostgreNoSQLDBClient extends DB {
   }
 
   @Override
-  public Status update(String tableName, String key, HashMap<String, ByteIterator> values) {
+  public Status update(String tableName, String key, Map<String, ByteIterator> values) {
     try{
       JSONObject jsonObject = new JSONObject();
       for (Map.Entry<String, ByteIterator> entry : values.entrySet()) {
@@ -188,7 +188,7 @@ public class PostgreNoSQLDBClient extends DB {
   }
 
   @Override
-  public Status insert(String tableName, String key, HashMap<String, ByteIterator> values) {
+  public Status insert(String tableName, String key, Map<String, ByteIterator> values) {
     try{
       PreparedStatement insertStatement = connection.prepareStatement(createInsertStatement(tableName));
       insertStatement.setString(1, key);

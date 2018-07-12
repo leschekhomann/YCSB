@@ -23,6 +23,7 @@ import org.postgresql.util.PGobject;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -35,6 +36,12 @@ import java.util.*;
  */
 public class PostgreNoSQLDBClient extends DB {
   private static final Logger LOG = LoggerFactory.getLogger(PostgreNoSQLDBClient.class);
+
+  /**
+   * Count the number of times initialized to teardown on the last
+   * {@link #cleanup()}.
+   */
+  private static final AtomicInteger INIT_COUNT = new AtomicInteger(0);
 
   /** The driver to get the connection to postgresql. */
   private static Driver postgrenosqlDriver;
@@ -65,7 +72,6 @@ public class PostgreNoSQLDBClient extends DB {
 
   private static final String DEFAULT_PROP = "";
 
-  private boolean initialized = false;
   private Properties props;
 
   /** Returns parsed boolean value from the properties if set, otherwise returns defaultVal. */
@@ -79,26 +85,37 @@ public class PostgreNoSQLDBClient extends DB {
 
   @Override
   public void init() throws DBException {
-    if (initialized) {
-      LOG.error("Client connection already initialized.");
-      return;
+    INIT_COUNT.incrementAndGet();
+    synchronized (PostgreNoSQLDBClient.class) {
+      if (postgrenosqlDriver != null) {
+        return;
+      }
+
+      props = getProperties();
+      String urls = props.getProperty(CONNECTION_URL,"jdbc:postgresql://10.211.55.4:5432/test");
+      String user = props.getProperty(CONNECTION_USER, DEFAULT_PROP);
+      String passwd = props.getProperty(CONNECTION_PASSWD, DEFAULT_PROP);
+      boolean autoCommit = getBoolProperty(props, JDBC_AUTO_COMMIT, true);
+
+      try {
+        Properties tmpProps = new Properties();
+        tmpProps.setProperty("user", user);
+        tmpProps.setProperty("password", passwd);
+
+        postgrenosqlDriver = new Driver();
+        connection = postgrenosqlDriver.connect(urls, tmpProps);
+        connection.setAutoCommit(autoCommit);
+      } catch (Exception e) {
+        LOG.error("Error during initialization: " + e);
+      }
     }
-    props = getProperties();
-    String urls = props.getProperty(CONNECTION_URL, DEFAULT_PROP);
-    String user = props.getProperty(CONNECTION_USER, DEFAULT_PROP);
-    String passwd = props.getProperty(CONNECTION_PASSWD, DEFAULT_PROP);
-    boolean autoCommit = getBoolProperty(props, JDBC_AUTO_COMMIT, true);
+  }
 
-    try{
-      Properties tmpProps = new Properties();
-      tmpProps.setProperty("user", user);
-      tmpProps.setProperty("password", passwd);
-
-      postgrenosqlDriver = new Driver();
-      connection = postgrenosqlDriver.connect(urls, tmpProps);
-      connection.setAutoCommit(autoCommit);
-    } catch (Exception e){
-      LOG.error("Error during initialization: " + e);
+  @Override
+  public void cleanup() throws DBException {
+    if (INIT_COUNT.decrementAndGet() == 0) {
+      postgrenosqlDriver = null;
+      LOG.info("Local cleaned up.");
     }
   }
 

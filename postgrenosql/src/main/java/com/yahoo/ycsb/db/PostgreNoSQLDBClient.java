@@ -92,7 +92,7 @@ public class PostgreNoSQLDBClient extends DB {
       }
 
       props = getProperties();
-      String urls = props.getProperty(CONNECTION_URL,"jdbc:postgresql://10.211.55.4:5432/test");
+      String urls = props.getProperty(CONNECTION_URL, DEFAULT_PROP);
       String user = props.getProperty(CONNECTION_USER, DEFAULT_PROP);
       String passwd = props.getProperty(CONNECTION_PASSWD, DEFAULT_PROP);
       boolean autoCommit = getBoolProperty(props, JDBC_AUTO_COMMIT, true);

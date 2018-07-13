@@ -19,16 +19,22 @@ LICENSE file.
 This section describes how to run YCSB on PostgreSQL and use it as a document store.
  
 ## Download and Install Postgres Server Version
-You can find an instruction here: https://www.postgresql.org/download/. 
+You can find an instruction here: https://www.postgresql.org/download/.
+Otherwise download the official docker container from https://hub.docker.com/_/postgres/ and follow the instructions.
+Do not forget to expose the postgresql server port when running the container.
 The YCSB PostgreNoSQL is tested on PostgreSQL Server 9.5 and 9.6.
  
 In the next step grant access rights for the default postgres user to access the Postgres Server.
 In case you run the YCSB client and the Postgres Server on different machines make sure that the server is reachable.
 Then create a database, e.g., test and create a table that is able to store the documents. 
 
-The following command can be used for that:
+The following commands can be used for that:
+
+**CREATE DATABASE test;**
 
 **CREATE TABLE usertable (YCSB_KEY VARCHAR(255) PRIMARY KEY not NULL, YCSB_VALUE JSONB not NULL);**
+
+**GRANT ALL PRIVILEGES ON DATABASE test;**
 
 ## Configure the parameters in the properties file
 **postgrenosql.url = jdbc:postgresql://localhost:5432/test**
@@ -46,5 +52,13 @@ Defines the password of user the client uses to connect to the Postgres Server.
 **postgrenosql.autocommit = true**
 
 Defines whether transactions shoud by applied directly.
+
+Here are some basic commands to start the benchmark from the root directory:
+
+The following command loads the workload and uses the configuration defined in the properties file:
+.\bin\ycsb load postgrenosql -P .\workloads\workloada -P .\postgrenosql\conf\postgrenosql.properties
+
+The following command runs the workload and uses the configuration defined in the properties file:
+.\bin\ycsb run postgrenosql -P .\workloads\workloada -P .\postgrenosql\conf\postgrenosql.properties
 
 

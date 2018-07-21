@@ -131,10 +131,18 @@ public class PostgreNoSQLDBClient extends DB {
         return  Status.NOT_FOUND;
       }
 
-      if (result != null && fields != null) {
-        for (String field : fields) {
-          String value = resultSet.getString(field);
-          result.put(field, new StringByteIterator(value));
+      if (result != null) {
+        if (fields == null){
+          while (resultSet.next()){
+            String field = resultSet.getString(2);
+            String value = resultSet.getString(3);
+            result.put(field, new StringByteIterator(value));
+          }
+        } else {
+          for (String field : fields) {
+            String value = resultSet.getString(field);
+            result.put(field, new StringByteIterator(value));
+          }
         }
       }
       resultSet.close();
@@ -256,25 +264,12 @@ public class PostgreNoSQLDBClient extends DB {
     // TODO: Change implementation to prepared statements
     StringBuilder read = new StringBuilder("SELECT " + PRIMARY_KEY + " AS " + PRIMARY_KEY);
 
-    // When fields are not set they need to be constructed by the following select statement
     if (fields == null) {
-      try {
-        LOG.info("Fields are empty...");
-        fields = new HashSet<>();
-        String statement = "select jsonb_object_keys(YCSB_VALUE) from (select * from usertable limit 1) as tmp;";
-        PreparedStatement tmpStatement = connection.prepareStatement(statement);
-        ResultSet tmpResultSet = tmpStatement.executeQuery();
-
-        while (tmpResultSet.next()) {
-          fields.add(tmpResultSet.getString(0));
-        }
-      } catch (SQLException e) {
-        //LOG.error("Error in processing read of table " + tableName + ": " + e);
+      read.append(", (jsonb_each_text(" + COLUMN_NAME + ")).*");
+    } else {
+      for (String field:fields){
+        read.append(", " + COLUMN_NAME + "->>'" + field + "' AS " + field);
       }
-    }
-
-    for (String field:fields){
-      read.append(", " + COLUMN_NAME + "->>'" + field + "' AS " + field);
     }
 
     read.append(" FROM " + table);

@@ -20,14 +20,15 @@
 language: java
 
 jdk:
-  - oraclejdk9
   - oraclejdk8
+  - oraclejdk9
+  - oraclejdk10
+  - oraclejdk11
 
 addons:
   hosts:
     - myshorthost
   hostname: myshorthost
-  postgresql: "9.5"
 
 install: mvn install -q -DskipTests=true
 
@@ -38,8 +39,10 @@ before_script:
   - psql -c 'CREATE TABLE usertable (YCSB_KEY VARCHAR(255) PRIMARY KEY not NULL, YCSB_VALUE JSONB not NULL);' -U postgres
   - psql -c 'GRANT ALL PRIVILEGES ON DATABASE test;' -U postgres
 
+
 # Services to start for tests.
 services:
+  - ignite
   - mongodb
   - postgresql
 # temporarily disable riak. failing, docs offline.

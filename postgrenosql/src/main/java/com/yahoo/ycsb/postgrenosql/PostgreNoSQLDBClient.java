@@ -151,10 +151,18 @@ public class PostgreNoSQLDBClient extends DB {
         return  Status.NOT_FOUND;
       }
 
-      if (result != null && fields != null) {
-        for (String field : fields) {
-          String value = resultSet.getString(field);
-          result.put(field, new StringByteIterator(value));
+      if (result != null) {
+        if (fields == null){
+          while (resultSet.next()){
+            String field = resultSet.getString(2);
+            String value = resultSet.getString(3);
+            result.put(field, new StringByteIterator(value));
+          }
+        } else {
+          for (String field : fields) {
+            String value = resultSet.getString(field);
+            result.put(field, new StringByteIterator(value));
+          }
         }
       }
       resultSet.close();

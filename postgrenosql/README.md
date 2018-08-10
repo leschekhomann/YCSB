@@ -34,7 +34,7 @@ The following commands can be used for that:
 
 **CREATE TABLE usertable (YCSB_KEY VARCHAR(255) PRIMARY KEY not NULL, YCSB_VALUE JSONB not NULL);**
 
-**GRANT ALL PRIVILEGES ON DATABASE test;**
+**GRANT ALL PRIVILEGES ON DATABASE test to postgres;**
 
 ## Configure the parameters in the properties file
 **postgrenosql.url = jdbc:postgresql://localhost:5432/test**

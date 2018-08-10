@@ -75,8 +75,6 @@ public class PostgreNoSQLDBClient extends DB {
 
   private static final String DEFAULT_PROP = "";
 
-  private Set<String> fieldsToRead = null;
-
   /** Returns parsed boolean value from the properties if set, otherwise returns defaultVal. */
   private static boolean getBoolProperty(Properties props, String key, boolean defaultVal) {
     String valueStr = props.getProperty(key);
@@ -306,8 +304,12 @@ public class PostgreNoSQLDBClient extends DB {
   private String createReadStatement(StatementType readType){
     StringBuilder read = new StringBuilder("SELECT " + PRIMARY_KEY + " AS " + PRIMARY_KEY);
 
-    for (String field:getFieldsToReadIfNull(readType)){
-      read.append(", " + COLUMN_NAME + "->>'" + field + "' AS " + field);
+    if (readType.getFields() == null) {
+      read.append(", (jsonb_each_text(" + COLUMN_NAME + ")).*");
+    } else {
+      for (String field:readType.getFields()){
+        read.append(", " + COLUMN_NAME + "->>'" + field + "' AS " + field);
+      }
     }
 
     read.append(" FROM " + readType.getTableName());
@@ -316,35 +318,6 @@ public class PostgreNoSQLDBClient extends DB {
     read.append(" = ");
     read.append("?");
     return read.toString();
-  }
-
-  private Set<String> getFieldsToReadIfNull(StatementType readStatement){
-    // If the fields values are set, then we use them.
-    if (readStatement.getFields() != null){
-      return readStatement.getFields();
-    }
-
-    // If the field values are not set, then we check whether they are already cached.
-    if (fieldsToRead != null){
-      return fieldsToRead;
-    }
-
-    // Otherwise we have to retrieve the fields by the following SQL statement.
-    try {
-      // When fields are not set they need to be constructed by the following select statement
-      String statement = "select jsonb_object_keys(YCSB_VALUE) from (select * from " + readStatement.getTableName() + " limit 1) as tmp;";
-      PreparedStatement tmpStatement = connection.prepareStatement(statement);
-      ResultSet tmpResultSet = tmpStatement.executeQuery();
-
-      fieldsToRead = new HashSet<>();
-      while (tmpResultSet.next()) {
-        fieldsToRead.add(tmpResultSet.getString(0));
-      }
-    } catch (SQLException e) {
-      LOG.error("Error in processing read of table " + readStatement.getTableName() + ": " + e);
-    }
-
-    return fieldsToRead;
   }
 
   private PreparedStatement createAndCacheScanStatement(StatementType scanType)

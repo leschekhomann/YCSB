@@ -23,6 +23,9 @@ import org.postgresql.util.PGobject;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import java.sql.Connection;
@@ -37,11 +40,11 @@ import java.util.*;
 public class PostgreNoSQLDBClient extends DB {
   private static final Logger LOG = LoggerFactory.getLogger(PostgreNoSQLDBClient.class);
 
-  /**
-   * Count the number of times initialized to teardown on the last
-   * {@link #cleanup()}.
-   */
+  /** Count the number of times initialized to teardown on the last. */
   private static final AtomicInteger INIT_COUNT = new AtomicInteger(0);
+
+  /** Cache for already prepared statements. */
+  private static ConcurrentMap<StatementType, PreparedStatement> cachedStatements;
 
   /** The driver to get the connection to postgresql. */
   private static Driver postgrenosqlDriver;
@@ -72,7 +75,7 @@ public class PostgreNoSQLDBClient extends DB {
 
   private static final String DEFAULT_PROP = "";
 
-  private Properties props;
+  private Set<String> fieldsToRead = null;
 
   /** Returns parsed boolean value from the properties if set, otherwise returns defaultVal. */
   private static boolean getBoolProperty(Properties props, String key, boolean defaultVal) {
@@ -91,7 +94,7 @@ public class PostgreNoSQLDBClient extends DB {
         return;
       }
 
-      props = getProperties();
+      Properties props = getProperties();
       String urls = props.getProperty(CONNECTION_URL, DEFAULT_PROP);
       String user = props.getProperty(CONNECTION_USER, DEFAULT_PROP);
       String passwd = props.getProperty(CONNECTION_PASSWD, DEFAULT_PROP);
@@ -102,9 +105,12 @@ public class PostgreNoSQLDBClient extends DB {
         tmpProps.setProperty("user", user);
         tmpProps.setProperty("password", passwd);
 
+        cachedStatements = new ConcurrentHashMap<>();
+
         postgrenosqlDriver = new Driver();
         connection = postgrenosqlDriver.connect(urls, tmpProps);
         connection.setAutoCommit(autoCommit);
+
       } catch (Exception e) {
         LOG.error("Error during initialization: " + e);
       }
@@ -114,6 +120,17 @@ public class PostgreNoSQLDBClient extends DB {
   @Override
   public void cleanup() throws DBException {
     if (INIT_COUNT.decrementAndGet() == 0) {
+      try {
+        cachedStatements.clear();
+
+        if (!connection.getAutoCommit()){
+          connection.commit();
+        }
+        connection.close();
+      }
+      catch (SQLException e) {
+
+      }
       postgrenosqlDriver = null;
       LOG.info("Local cleaned up.");
     }
@@ -122,9 +139,12 @@ public class PostgreNoSQLDBClient extends DB {
   @Override
   public Status read(String tableName, String key, Set<String> fields, Map<String, ByteIterator> result) {
     try{
-      PreparedStatement readStatement = connection.prepareStatement(createReadStatement(tableName, fields));
+      StatementType type = new StatementType(StatementType.Type.READ, tableName, fields);
+      PreparedStatement readStatement = cachedStatements.get(type);
+      if (readStatement == null) {
+        readStatement = createAndCacheReadStatement(type);
+      }
       readStatement.setString(1, key);
-
       ResultSet resultSet = readStatement.executeQuery();
       if (!resultSet.next()) {
         resultSet.close();
@@ -150,12 +170,14 @@ public class PostgreNoSQLDBClient extends DB {
   public Status scan(String tableName, String startKey, int recordcount, Set<String> fields,
                      Vector<HashMap<String, ByteIterator>> result) {
     try {
-      PreparedStatement scanStatement = connection.prepareStatement(createScanStatement(tableName, fields));
-
+      StatementType type = new StatementType(StatementType.Type.SCAN, tableName, fields);
+      PreparedStatement scanStatement = cachedStatements.get(type);
+      if (scanStatement == null) {
+        scanStatement = createAndCacheScanStatement(type);
+      }
       scanStatement.setString(1, startKey);
       scanStatement.setInt(2, recordcount);
       ResultSet resultSet = scanStatement.executeQuery();
-
       for (int i = 0; i < recordcount && resultSet.next(); i++) {
         if (result != null && fields != null) {
           HashMap<String, ByteIterator> values = new HashMap<String, ByteIterator>();
@@ -179,12 +201,16 @@ public class PostgreNoSQLDBClient extends DB {
   @Override
   public Status update(String tableName, String key, Map<String, ByteIterator> values) {
     try{
+      StatementType type = new StatementType(StatementType.Type.UPDATE, tableName, null);
+      PreparedStatement updateStatement = cachedStatements.get(type);
+      if (updateStatement == null) {
+        updateStatement = createAndCacheUpdateStatement(type);
+      }
+
       JSONObject jsonObject = new JSONObject();
       for (Map.Entry<String, ByteIterator> entry : values.entrySet()) {
         jsonObject.put(entry.getKey(), entry.getValue().toString());
       }
-
-      PreparedStatement updateStatement = connection.prepareStatement(createUpdateStatement(tableName));
 
       PGobject object = new PGobject();
       object.setType("jsonb");
@@ -207,8 +233,11 @@ public class PostgreNoSQLDBClient extends DB {
   @Override
   public Status insert(String tableName, String key, Map<String, ByteIterator> values) {
     try{
-      PreparedStatement insertStatement = connection.prepareStatement(createInsertStatement(tableName));
-      insertStatement.setString(1, key);
+      StatementType type = new StatementType(StatementType.Type.INSERT, tableName, null);
+      PreparedStatement insertStatement = cachedStatements.get(type);
+      if (insertStatement == null) {
+        insertStatement = createAndCacheInsertStatement(type);
+      }
 
       JSONObject jsonObject = new JSONObject();
       for (Map.Entry<String, ByteIterator> entry : values.entrySet()) {
@@ -218,10 +247,11 @@ public class PostgreNoSQLDBClient extends DB {
       PGobject object = new PGobject();
       object.setType("jsonb");
       object.setValue(jsonObject.toJSONString());
+
       insertStatement.setObject(2, object);
+      insertStatement.setString(1, key);
 
       int result = insertStatement.executeUpdate();
-
       if (result == 1) {
         return Status.OK;
       }
@@ -236,11 +266,14 @@ public class PostgreNoSQLDBClient extends DB {
   @Override
   public Status delete(String tableName, String key) {
     try{
-      PreparedStatement deleteStatement = connection.prepareStatement(createDeleteStatement(tableName));
+      StatementType type = new StatementType(StatementType.Type.DELETE, tableName, null);
+      PreparedStatement deleteStatement = cachedStatements.get(type);
+      if (deleteStatement == null) {
+        deleteStatement = createAndCacheDeleteStatement(type);
+      }
       deleteStatement.setString(1, key);
 
       int result = deleteStatement.executeUpdate();
-
       if (result == 1){
         return Status.OK;
       }
@@ -252,32 +285,24 @@ public class PostgreNoSQLDBClient extends DB {
     }
   }
 
-  private String createReadStatement(String table, Set<String> fields) {
-    // TODO: Change implementation to prepared statements
+  private PreparedStatement createAndCacheReadStatement(StatementType readType)
+      throws SQLException{
+    PreparedStatement readStatement = connection.prepareStatement(createReadStatement(readType));
+    PreparedStatement statement = cachedStatements.putIfAbsent(readType, readStatement);
+    if (statement == null) {
+      return readStatement;
+    }
+    return statement;
+  }
+
+  private String createReadStatement(StatementType readType){
     StringBuilder read = new StringBuilder("SELECT " + PRIMARY_KEY + " AS " + PRIMARY_KEY);
 
-    // When fields are not set they need to be constructed by the following select statement
-    if (fields == null) {
-      try {
-        LOG.info("Fields are empty...");
-        fields = new HashSet<>();
-        String statement = "select jsonb_object_keys(YCSB_VALUE) from (select * from usertable limit 1) as tmp;";
-        PreparedStatement tmpStatement = connection.prepareStatement(statement);
-        ResultSet tmpResultSet = tmpStatement.executeQuery();
-
-        while (tmpResultSet.next()) {
-          fields.add(tmpResultSet.getString(0));
-        }
-      } catch (SQLException e) {
-        //LOG.error("Error in processing read of table " + tableName + ": " + e);
-      }
-    }
-
-    for (String field:fields){
+    for (String field:getFieldsToReadIfNull(readType)){
       read.append(", " + COLUMN_NAME + "->>'" + field + "' AS " + field);
     }
 
-    read.append(" FROM " + table);
+    read.append(" FROM " + readType.getTableName());
     read.append(" WHERE ");
     read.append(PRIMARY_KEY);
     read.append(" = ");
@@ -285,28 +310,76 @@ public class PostgreNoSQLDBClient extends DB {
     return read.toString();
   }
 
-  private String createScanStatement(String table, Set<String> fields) {
-    // TODO: Change implementation to prepared statements
-    StringBuilder select = new StringBuilder("SELECT " + PRIMARY_KEY + " AS " + PRIMARY_KEY);
-    if (fields != null){
-      for (String field:fields){
-        select.append(", " + COLUMN_NAME + "->>'" + field + "' AS " + field);
-      }
+  private Set<String> getFieldsToReadIfNull(StatementType readStatement){
+    // If the fields values are set, then we use them.
+    if (readStatement.getFields() != null){
+      return readStatement.getFields();
     }
-    select.append(" FROM " + table);
-    select.append(" WHERE ");
-    select.append(PRIMARY_KEY);
-    select.append(" >= ?");
-    select.append(" ORDER BY ");
-    select.append(PRIMARY_KEY);
-    select.append(" LIMIT ?");
-    return select.toString();
+
+    // If the field values are not set, then we check whether they are already cached.
+    if (fieldsToRead != null){
+      return fieldsToRead;
+    }
+
+    // Otherwise we have to retrieve the fields by the following SQL statement.
+    try {
+      // When fields are not set they need to be constructed by the following select statement
+      String statement = "select jsonb_object_keys(YCSB_VALUE) from (select * from " + readStatement.getTableName() + " limit 1) as tmp;";
+      PreparedStatement tmpStatement = connection.prepareStatement(statement);
+      ResultSet tmpResultSet = tmpStatement.executeQuery();
+
+      fieldsToRead = new HashSet<>();
+      while (tmpResultSet.next()) {
+        fieldsToRead.add(tmpResultSet.getString(0));
+      }
+    } catch (SQLException e) {
+      LOG.error("Error in processing read of table " + readStatement.getTableName() + ": " + e);
+    }
+
+    return fieldsToRead;
   }
 
-  public String createUpdateStatement(String table) {
-    // TODO: Change implementation to prepared statements
+  private PreparedStatement createAndCacheScanStatement(StatementType scanType)
+      throws SQLException{
+    PreparedStatement scanStatement = connection.prepareStatement(createScanStatement(scanType));
+    PreparedStatement statement = cachedStatements.putIfAbsent(scanType, scanStatement);
+    if (statement == null) {
+      return scanStatement;
+    }
+    return statement;
+  }
+
+  private String createScanStatement(StatementType scanType){
+    StringBuilder scan = new StringBuilder("SELECT " + PRIMARY_KEY + " AS " + PRIMARY_KEY);
+    if (scanType.getFields() != null){
+      for (String field:scanType.getFields()){
+        scan.append(", " + COLUMN_NAME + "->>'" + field + "' AS " + field);
+      }
+    }
+    scan.append(" FROM " + scanType.getTableName());
+    scan.append(" WHERE ");
+    scan.append(PRIMARY_KEY);
+    scan.append(" >= ?");
+    scan.append(" ORDER BY ");
+    scan.append(PRIMARY_KEY);
+    scan.append(" LIMIT ?");
+
+    return scan.toString();
+  }
+
+  public PreparedStatement createAndCacheUpdateStatement(StatementType updateType)
+      throws SQLException{
+    PreparedStatement updateStatement = connection.prepareStatement(createUpdateStatement(updateType));
+    PreparedStatement statement = cachedStatements.putIfAbsent(updateType, updateStatement);
+    if (statement == null) {
+      return updateStatement;
+    }
+    return statement;
+  }
+
+  private String createUpdateStatement(StatementType updateType){
     StringBuilder update = new StringBuilder("UPDATE ");
-    update.append(table);
+    update.append(updateType.getTableName());
     update.append(" SET ");
     update.append(COLUMN_NAME + " = " + COLUMN_NAME);
     update.append(" || ? ");
@@ -316,19 +389,37 @@ public class PostgreNoSQLDBClient extends DB {
     return update.toString();
   }
 
-  private String createInsertStatement(String table) {
-    // TODO: Change implementation to prepared statements
+  private PreparedStatement createAndCacheInsertStatement(StatementType insertType)
+      throws SQLException{
+    PreparedStatement insertStatement = connection.prepareStatement(createInsertStatement(insertType));
+    PreparedStatement statement = cachedStatements.putIfAbsent(insertType, insertStatement);
+    if (statement == null) {
+      return insertStatement;
+    }
+    return statement;
+  }
+
+  private String createInsertStatement(StatementType insertType){
     StringBuilder insert = new StringBuilder("INSERT INTO ");
-    insert.append(table);
+    insert.append(insertType.getTableName());
     insert.append(" (" + PRIMARY_KEY + "," + COLUMN_NAME + ")");
     insert.append(" VALUES(?,?)");
     return insert.toString();
   }
 
-  private String createDeleteStatement(String table) {
-    // TODO: Change implementation to prepared statements
+  private PreparedStatement createAndCacheDeleteStatement(StatementType deleteType)
+      throws SQLException{
+    PreparedStatement deleteStatement = connection.prepareStatement(createDeleteStatement(deleteType));
+    PreparedStatement statement = cachedStatements.putIfAbsent(deleteType, deleteStatement);
+    if (statement == null) {
+      return deleteStatement;
+    }
+    return statement;
+  }
+
+  private String createDeleteStatement(StatementType deleteType){
     StringBuilder delete = new StringBuilder("DELETE FROM ");
-    delete.append(table);
+    delete.append(deleteType.getTableName());
     delete.append(" WHERE ");
     delete.append(PRIMARY_KEY);
     delete.append(" = ?");

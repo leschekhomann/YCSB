@@ -81,8 +81,6 @@ public class PostgreNoSQLDBClientTest {
 
     try{
       postgreSQLConnection = new Driver().connect(TEST_DB_URL, props);
-      deleteTable();
-      createTable();
 
       postgreNoSQLClient = new PostgreNoSQLDBClient();
       postgreNoSQLClient.setProperties(props);
@@ -94,8 +92,7 @@ public class PostgreNoSQLDBClientTest {
   }
 
   @AfterClass
-  public static void tearDown() {
-    deleteTable();
+  public static void tearDown(){
   }
 
   @Test
@@ -239,50 +236,6 @@ public class PostgreNoSQLDBClientTest {
 
     } catch (Exception e){
       LOG.info(e.toString());
-    }
-  }
-
-  private static void createTable(){
-    if (null != postgreSQLConnection){
-      LOG.info("createTable");
-      try{
-        // create sql command
-        StringBuilder sqlCommand = new StringBuilder("CREATE TABLE");
-        sqlCommand.append(" ");
-        sqlCommand.append(TABLE_NAME);
-        sqlCommand.append(" ");
-        sqlCommand.append("(");
-        sqlCommand.append(PostgreNoSQLDBClient.PRIMARY_KEY + " VARCHAR(255) PRIMARY KEY not NULL");
-        sqlCommand.append(",");
-        sqlCommand.append(PostgreNoSQLDBClient.COLUMN_NAME + " JSONB not NULL");
-        sqlCommand.append(")");
-
-        // create table
-        PreparedStatement statement = postgreSQLConnection.prepareStatement(sqlCommand.toString());
-        LOG.info(statement.toString());
-        statement.execute();
-      } catch (SQLException e){
-        LOG.info(e.toString());
-      }
-    }
-  }
-
-  private static void deleteTable(){
-    if (null != postgreSQLConnection){
-      LOG.info("deleteTable");
-      try{
-        // create sql command
-        StringBuilder sqlCommand = new StringBuilder("DROP TABLE IF EXISTS");
-        sqlCommand.append(" ");
-        sqlCommand.append(TABLE_NAME);
-
-        // delete table
-        PreparedStatement statement = postgreSQLConnection.prepareStatement(sqlCommand.toString());
-        LOG.info(statement.toString());
-        statement.execute();
-      } catch (SQLException e){
-        LOG.info(e.toString());
-      }
     }
   }
 

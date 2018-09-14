@@ -58,10 +58,6 @@ public class StatementType {
     return fields;
   }
 
-  public void setFields(Set<String> fields) {
-    this.fields = fields;
-  }
-
   @Override
   public int hashCode() {
     final int prime = 31;
@@ -99,9 +95,9 @@ public class StatementType {
     }
 
     if (fields == null) {
-        if (other.fields != null) {
-          return false;
-        }
+      if (other.fields != null) {
+        return false;
+      }
     }else if (!fields.equals(other.fields)) {
       return false;
     }

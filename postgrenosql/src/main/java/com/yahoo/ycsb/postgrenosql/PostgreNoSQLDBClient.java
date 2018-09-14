@@ -125,18 +125,16 @@ public class PostgreNoSQLDBClient extends DB {
           connection.commit();
         }
         connection.close();
-      }
-      catch (SQLException e) {
-
+      } catch (SQLException e) {
+        System.err.println("Error in cleanup execution. " + e);
       }
       postgrenosqlDriver = null;
-      LOG.info("Local cleaned up.");
     }
   }
 
   @Override
   public Status read(String tableName, String key, Set<String> fields, Map<String, ByteIterator> result) {
-    try{
+    try {
       StatementType type = new StatementType(StatementType.Type.READ, tableName, fields);
       PreparedStatement readStatement = cachedStatements.get(type);
       if (readStatement == null) {

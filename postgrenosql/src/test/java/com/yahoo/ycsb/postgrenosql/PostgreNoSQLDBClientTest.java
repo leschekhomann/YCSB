@@ -30,6 +30,7 @@ import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.util.*;
 
+import org.postgresql.util.PSQLException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -82,9 +83,18 @@ public class PostgreNoSQLDBClientTest {
     try{
       postgreSQLConnection = new Driver().connect(TEST_DB_URL, props);
 
+      boolean tableExists = postgreSQLConnection.getMetaData().getTables(null, null, TABLE_NAME, null).next();
+
+      assertThat("Table does not exist.", tableExists, not(false));
+
       postgreNoSQLClient = new PostgreNoSQLDBClient();
       postgreNoSQLClient.setProperties(props);
       postgreNoSQLClient.init();
+    }
+    catch (PSQLException e){
+      if (e.getSQLState().equals("3D000")){
+        assumeNoException("Database does not exist. Skipping tests.", e);
+      }
     }
     catch (SQLException | DBException e){
       LOG.info(e.toString());

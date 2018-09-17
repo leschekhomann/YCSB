@@ -1,5 +1,5 @@
-/**
- * Copyright (c) 2010 Yahoo! Inc., 2016 YCSB contributors. All rights reserved.
+/*
+ * Copyright 2017 YCSB Contributors. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -13,6 +13,9 @@
  * implied. See the License for the specific language governing
  * permissions and limitations under the License. See accompanying
  * LICENSE file.
+ *
+ * BASED ON MODIFICATIONS OF the jdbc-binding StatementType class.
+ *
  */
 package com.yahoo.ycsb.postgrenosql;
 
